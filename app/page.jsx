@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useTheme } from '../lib/themeContext'
 import Calendar from '../components/Calendar'
 import EventForm from '../components/EventForm'
+import EventDetailModal from '../components/EventDetailModal'
 import ProfileModal from '../components/ProfileModal'
 import ThemeSelector from '../components/ThemeSelector'
 import Logo from '../components/Logo'
@@ -17,14 +18,33 @@ export default function Home() {
   const [events, setEvents] = useState([])
   const [profiles, setProfiles] = useState([])
   const [showEventForm, setShowEventForm] = useState(false)
+  const [showEventDetail, setShowEventDetail] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const { themeConfig } = useTheme()
 
   useEffect(() => {
-    console.log('Home: Checking user...')
-    checkUser()
+    console.log('Home: Setting up auth listener...')
+    
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Home: Initial session:', session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        console.log('Home: Auth state changed:', event, session)
+        setUser(session?.user ?? null)
+        setLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
@@ -36,29 +56,15 @@ export default function Home() {
     }
   }, [user])
 
-  const checkUser = async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      console.log('Home: Session check:', { session, error })
-      
-      if (error) {
-        console.error('Session error:', error)
-      }
-      
-      setUser(session?.user ?? null)
-    } catch (error) {
-      console.error('Error checking user:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const fetchEvents = async () => {
     try {
       console.log('Fetching events...')
       const { data, error } = await supabase
         .from('events')
-        .select('*')
+        .select(`
+          *,
+          profiles!created_by(name, email)
+        `)
         .order('start_time', { ascending: true })
 
       if (error) throw error
@@ -103,7 +109,8 @@ export default function Home() {
         (payload) => {
           console.log('Realtime event:', payload)
           if (payload.eventType === 'INSERT') {
-            setEvents(prev => [...prev, payload.new])
+            // Fetch the complete event with profile data
+            fetchEvents()
             
             // Show notification for new events
             if (payload.new.created_by !== user.id) {
@@ -117,9 +124,7 @@ export default function Home() {
             // Schedule reminders
             scheduleReminder(payload.new)
           } else if (payload.eventType === 'UPDATE') {
-            setEvents(prev => prev.map(event => 
-              event.id === payload.new.id ? payload.new : event
-            ))
+            fetchEvents()
           } else if (payload.eventType === 'DELETE') {
             setEvents(prev => prev.filter(event => event.id !== payload.old.id))
           }
@@ -159,6 +164,50 @@ export default function Home() {
     } catch (error) {
       console.error('Error creating event:', error)
       alert('Error creating event. Please try again.')
+    }
+  }
+
+  const handleEventClick = (event) => {
+    console.log('Event clicked:', event)
+    setSelectedEvent(event)
+    setShowEventDetail(true)
+  }
+
+  const handleEventUpdate = async (eventId, updates) => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update(updates)
+        .eq('id', eventId)
+
+      if (error) throw error
+      
+      // Close modal and refresh events
+      setShowEventDetail(false)
+      setSelectedEvent(null)
+      
+    } catch (error) {
+      console.error('Error updating event:', error)
+      alert('Error updating event. Please try again.')
+    }
+  }
+
+  const handleEventDelete = async (eventId) => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventId)
+
+      if (error) throw error
+      
+      // Close modal
+      setShowEventDetail(false)
+      setSelectedEvent(null)
+      
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      alert('Error deleting event. Please try again.')
     }
   }
 
@@ -278,10 +327,7 @@ export default function Home() {
           profiles={profiles}
           selectedDate={selectedDate}
           onDateSelect={setSelectedDate}
-          onEventClick={(event) => {
-            // Handle event click - could open edit modal
-            console.log('Event clicked:', event)
-          }}
+          onEventClick={handleEventClick}
         />
       </main>
 
@@ -291,6 +337,21 @@ export default function Home() {
           selectedDate={selectedDate}
           onSubmit={handleEventSubmit}
           onClose={() => setShowEventForm(false)}
+        />
+      )}
+
+      {/* Event Detail Modal */}
+      {showEventDetail && selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          currentUser={user}
+          profiles={profiles}
+          onClose={() => {
+            setShowEventDetail(false)
+            setSelectedEvent(null)
+          }}
+          onUpdate={handleEventUpdate}
+          onDelete={handleEventDelete}
         />
       )}
 

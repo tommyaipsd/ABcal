@@ -1,136 +1,167 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, isSameDay, addMonths, subMonths } from 'date-fns'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 
 export default function Calendar({ events, profiles, selectedDate, onDateSelect, onEventClick }) {
-  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(new Date())
 
-  const monthStart = startOfMonth(currentMonth)
-  const monthEnd = endOfMonth(currentMonth)
-  const startDate = new Date(monthStart)
-  startDate.setDate(startDate.getDate() - monthStart.getDay())
-  const endDate = new Date(monthEnd)
-  endDate.setDate(endDate.getDate() + (6 - monthEnd.getDay()))
-
-  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate })
-
-  const eventsByDate = useMemo(() => {
-    const grouped = {}
-    events.forEach(event => {
-      const date = format(new Date(event.start_time), 'yyyy-MM-dd')
-      if (!grouped[date]) grouped[date] = []
-      grouped[date].push(event)
-    })
-    return grouped
-  }, [events])
-
-  const getEventColor = (event) => {
-    return event.color || '#3b82f6'
-  }
-
-  const getCreatorName = (event) => {
-    const creator = profiles.find(p => p.id === event.created_by)
-    return creator?.name || 'Unknown'
-  }
-
-  const formatEventTime = (event) => {
-    if (event.all_day) {
-      return event.title
+  // Generate calendar days
+  const calendarDays = useMemo(() => {
+    const year = currentDate.getFullYear()
+    const month = currentDate.getMonth()
+    
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const startDate = new Date(firstDay)
+    startDate.setDate(startDate.getDate() - firstDay.getDay())
+    
+    const days = []
+    const currentDateObj = new Date(startDate)
+    
+    for (let i = 0; i < 42; i++) {
+      days.push(new Date(currentDateObj))
+      currentDateObj.setDate(currentDateObj.getDate() + 1)
     }
-    return `${format(new Date(event.start_time), 'HH:mm')} ${event.title}`
+    
+    return days
+  }, [currentDate])
+
+  // Get events for a specific date
+  const getEventsForDate = (date) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.start_time)
+      return eventDate.toDateString() === date.toDateString()
+    })
   }
 
-  const previousMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1))
+  // Get profile color for event creator
+  const getEventColor = (event) => {
+    if (event.color) return event.color
+    const profile = profiles.find(p => p.id === event.created_by)
+    return profile?.color || '#3b82f6'
   }
 
-  const nextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1))
+  const navigateMonth = (direction) => {
+    const newDate = new Date(currentDate)
+    newDate.setMonth(newDate.getMonth() + direction)
+    setCurrentDate(newDate)
   }
+
+  const isToday = (date) => {
+    const today = new Date()
+    return date.toDateString() === today.toDateString()
+  }
+
+  const isCurrentMonth = (date) => {
+    return date.getMonth() === currentDate.getMonth()
+  }
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ]
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (
-    <div className="bg-white rounded-lg shadow-sm">
+    <div className="bg-white rounded-lg shadow">
       {/* Calendar Header */}
       <div className="flex items-center justify-between p-6 border-b">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {format(currentMonth, 'MMMM yyyy')}
-        </h2>
-        <div className="flex space-x-2">
-          <button
-            onClick={previousMonth}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            onClick={nextMonth}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Days of week header */}
-      <div className="grid grid-cols-7 border-b">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="p-3 text-center text-sm font-medium text-gray-500 border-r last:border-r-0">
-            {day}
+        <div className="flex items-center space-x-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+          </h2>
+          <div className="flex space-x-1">
+            <button
+              onClick={() => navigateMonth(-1)}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => navigateMonth(1)}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
-        ))}
+        </div>
+        
+        <button
+          onClick={() => setCurrentDate(new Date())}
+          className="px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+        >
+          Today
+        </button>
       </div>
 
       {/* Calendar Grid */}
-      <div className="calendar-grid">
-        {calendarDays.map(day => {
-          const dateKey = format(day, 'yyyy-MM-dd')
-          const dayEvents = eventsByDate[dateKey] || []
-          const isCurrentMonth = isSameMonth(day, currentMonth)
-          const isSelected = isSameDay(day, selectedDate)
-
-          return (
-            <div
-              key={day.toISOString()}
-              className={`calendar-cell ${!isCurrentMonth ? 'other-month' : ''} ${isToday(day) ? 'today' : ''} ${isSelected ? 'ring-2 ring-primary-500' : ''}`}
-              onClick={() => onDateSelect(day)}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className={`text-sm ${isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {format(day, 'd')}
-                </span>
-                {dayEvents.length > 0 && (
-                  <span className="text-xs bg-primary-100 text-primary-800 px-1 rounded">
-                    {dayEvents.length}
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                {dayEvents.slice(0, 3).map(event => (
-                  <div
-                    key={event.id}
-                    className="event-item text-white"
-                    style={{ backgroundColor: getEventColor(event) }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onEventClick(event)
-                    }}
-                    title={`${event.title} - ${getCreatorName(event)}`}
-                  >
-                    {formatEventTime(event)}
-                  </div>
-                ))}
-                {dayEvents.length > 3 && (
-                  <div className="text-xs text-gray-500 px-1">
-                    +{dayEvents.length - 3} more
-                  </div>
-                )}
-              </div>
+      <div className="p-6">
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 gap-px mb-2">
+          {dayNames.map(day => (
+            <div key={day} className="py-2 text-center text-sm font-medium text-gray-500">
+              {day}
             </div>
-          )
-        })}
+          ))}
+        </div>
+
+        {/* Calendar Days */}
+        <div className="calendar-grid">
+          {calendarDays.map((date, index) => {
+            const dayEvents = getEventsForDate(date)
+            const isSelectedDate = selectedDate && date.toDateString() === selectedDate.toDateString()
+            
+            return (
+              <div
+                key={index}
+                className={`calendar-cell cursor-pointer transition-colors ${
+                  !isCurrentMonth(date) ? 'other-month' : ''
+                } ${isToday(date) ? 'today' : ''} ${
+                  isSelectedDate ? 'ring-2 ring-primary-500' : ''
+                } hover:bg-gray-50`}
+                onClick={() => onDateSelect(date)}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-sm ${
+                    !isCurrentMonth(date) ? 'text-gray-400' : 'text-gray-900'
+                  } ${isToday(date) ? 'font-bold text-primary-700' : ''}`}>
+                    {date.getDate()}
+                  </span>
+                  {dayEvents.length > 0 && (
+                    <span className="text-xs bg-primary-100 text-primary-700 px-1 rounded">
+                      {dayEvents.length}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Events for this day */}
+                <div className="space-y-1">
+                  {dayEvents.slice(0, 3).map((event, eventIndex) => (
+                    <div
+                      key={event.id}
+                      className="event-item text-white cursor-pointer hover:opacity-80"
+                      style={{ backgroundColor: getEventColor(event) }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEventClick(event)
+                      }}
+                      title={`${event.title}${event.description ? ` - ${event.description}` : ''}`}
+                    >
+                      {event.title}
+                    </div>
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <div className="text-xs text-gray-500 px-1">
+                      +{dayEvents.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

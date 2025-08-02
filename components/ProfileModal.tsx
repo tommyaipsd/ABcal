@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, User, Mail, Save } from 'lucide-react'
+import { X, User, Mail, Upload, Save } from 'lucide-react'
 
 export default function ProfileModal({ user, onClose, onUpdate }) {
   const [formData, setFormData] = useState({
@@ -11,12 +11,10 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
     avatar_url: ''
   })
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
-    if (user) {
-      fetchProfile()
-    }
+    fetchProfile()
   }, [user])
 
   const fetchProfile = async () => {
@@ -27,8 +25,10 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
         .eq('id', user.id)
         .single()
 
-      if (error && error.code !== 'PGRST116') throw error
-      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error
+      }
+
       if (data) {
         setFormData({
           name: data.name || '',
@@ -44,43 +44,65 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setMessage('')
 
     try {
       const { error } = await supabase
         .from('profiles')
         .upsert({
           id: user.id,
-          name: formData.name,
-          email: formData.email,
-          avatar_url: formData.avatar_url,
+          ...formData,
           updated_at: new Date().toISOString()
         })
 
       if (error) throw error
 
-      setMessage('Profile updated successfully!')
       onUpdate()
-      
-      // Close modal after 1 second
-      setTimeout(() => {
-        onClose()
-      }, 1000)
+      onClose()
     } catch (error) {
       console.error('Error updating profile:', error)
-      setMessage('Error updating profile. Please try again.')
+      alert('Error updating profile. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+  const handleAvatarUpload = async (event) => {
+    try {
+      setUploading(true)
+      
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`
+      const filePath = `avatars/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      setFormData(prev => ({
+        ...prev,
+        avatar_url: data.publicUrl
+      }))
+    } catch (error) {
+      console.error('Error uploading avatar:', error)
+      alert('Error uploading avatar. Please try again.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg max-w-md w-full">
+        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h3 className="text-lg font-semibold text-gray-900">Edit Profile</h3>
           <button
@@ -91,7 +113,37 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Avatar */}
+          <div className="text-center">
+            <div className="mx-auto h-20 w-20 rounded-full overflow-hidden bg-gray-100 mb-4">
+              {formData.avatar_url ? (
+                <img 
+                  src={formData.avatar_url} 
+                  alt="Avatar" 
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-primary-100">
+                  <User className="h-8 w-8 text-primary-500" />
+                </div>
+              )}
+            </div>
+            
+            <label className="cursor-pointer inline-flex items-center space-x-2 text-sm text-primary-600 hover:text-primary-700">
+              <Upload className="h-4 w-4" />
+              <span>{uploading ? 'Uploading...' : 'Upload Photo'}</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                disabled={uploading}
+                className="hidden"
+              />
+            </label>
+          </div>
+
           {/* Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -102,13 +154,13 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
               type="text"
               required
               value={formData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="Enter your full name"
             />
           </div>
 
-          {/* Email (read-only) */}
+          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Mail className="inline h-4 w-4 mr-1" />
@@ -117,34 +169,15 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
             <input
               type="email"
               value={formData.email}
-              readOnly
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 cursor-not-allowed"
+              disabled
+              title="Email cannot be changed"
             />
-            <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+            <p className="text-xs text-gray-500 mt-1">Email cannot be changed after account creation</p>
           </div>
 
-          {/* Avatar URL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Avatar URL (optional)
-            </label>
-            <input
-              type="url"
-              value={formData.avatar_url}
-              onChange={(e) => handleChange('avatar_url', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="https://example.com/avatar.jpg"
-            />
-            <p className="text-xs text-gray-500 mt-1">Link to your profile picture</p>
-          </div>
-
-          {message && (
-            <div className={`text-sm ${message.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>
-              {message}
-            </div>
-          )}
-
-          {/* Submit Button */}
+          {/* Submit Buttons */}
           <div className="flex space-x-3 pt-4">
             <button
               type="button"
@@ -155,7 +188,7 @@ export default function ProfileModal({ user, onClose, onUpdate }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || uploading}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
             >
               <Save className="h-4 w-4" />

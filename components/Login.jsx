@@ -41,6 +41,7 @@ export default function Login() {
           setIsSignUp(false) // Switch to sign in mode
         } else if (data.session) {
           setMessage('Account created and signed in successfully!')
+          // No need to manually redirect - the auth state change will handle it
         }
       } else {
         console.log('Attempting sign in...')
@@ -56,14 +57,15 @@ export default function Login() {
         if (data.session) {
           console.log('Successfully signed in!')
           setMessage('Signed in successfully!')
+          // No need to manually redirect - the auth state change will handle it
         }
       }
     } catch (error) {
       console.error('Auth error:', error)
       setMessage(error.message)
-    } finally {
-      setLoading(false)
+      setLoading(false) // Only set loading to false on error
     }
+    // Don't set loading to false on success - let the redirect happen
   }
 
   return (

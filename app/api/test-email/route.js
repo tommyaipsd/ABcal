@@ -7,7 +7,7 @@ export async function POST(request) {
     // Call Supabase Edge Function
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
+      process.env.SUPABASE_SERVICE_ROLE_KEY // You'll need this for server-side calls
     )
 
     const { data, error } = await supabase.functions.invoke('test-email', {
